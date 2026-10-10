@@ -1,0 +1,497 @@
+@import "tailwindcss";
+
+/* ==========================================
+   Brainy Bot — Design System
+   ========================================== */
+
+@theme {
+  /* Brand Colors — Kahoot purple (tuned for light surfaces) */
+  --color-brand-50: #f7f3ff;
+  --color-brand-100: #efe6ff;
+  --color-brand-200: #e0cdff;
+  --color-brand-300: #c9a9ff;
+  --color-brand-400: #8b5cf6;
+  --color-brand-500: #7424e8;
+  --color-brand-600: #5b17c9;
+  --color-brand-700: #46178f;
+  --color-brand-800: #37116f;
+  --color-brand-900: #2b0d57;
+  --color-brand-950: #1a0836;
+
+  /* Accent Colors — accessible on white */
+  --color-accent-cyan: #0891b2;
+  --color-accent-emerald: #047857;
+  --color-accent-amber: #d97706;
+  --color-accent-rose: #e11d48;
+  --color-accent-violet: #7c3aed;
+
+  /* Answer Option Colors — Kahoot's signature blocks */
+  --color-option-red: #e21b3c;
+  --color-option-blue: #1368ce;
+  --color-option-yellow: #d89e00;
+  --color-option-green: #26890c;
+
+  /* Surface Colors — light */
+  --color-surface-dark: #f3effc;
+  --color-surface-card: #ffffff;
+  --color-surface-elevated: #ece6fa;
+  --color-surface-hover: #e2d9f7;
+  --color-surface-border: #ddd2f5;
+
+  /* Text Colors */
+  --color-text-primary: #170b2e;
+  --color-text-secondary: #4a3d73;
+  --color-text-muted: #7a6ba6;
+  --color-text-inverse: #ffffff;
+
+  /* Fonts — Kahoot uses Montserrat everywhere */
+  --font-display: 'Montserrat', system-ui, sans-serif;
+  --font-body: 'Montserrat', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Shadows */
+  --shadow-glow-sm: 0 4px 14px rgba(116, 36, 232, 0.18);
+  --shadow-glow-md: 0 8px 24px rgba(116, 36, 232, 0.22);
+  --shadow-glow-lg: 0 12px 40px rgba(116, 36, 232, 0.28);
+  --shadow-card: 0 2px 12px rgba(23, 11, 46, 0.08);
+  --shadow-elevated: 0 12px 32px rgba(23, 11, 46, 0.16);
+
+  /* Border Radius */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+  --radius-full: 9999px;
+
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-bounce: 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ==========================================
+   Base Styles
+   ========================================== */
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: var(--font-body);
+    background-color: var(--color-surface-dark);
+    color: var(--color-text-primary);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  a {
+    color: var(--color-brand-600);
+    text-decoration: none;
+    transition: color var(--transition-fast);
+  }
+
+  a:hover {
+    color: var(--color-brand-700);
+  }
+
+  button {
+    font-family: var(--font-body);
+    cursor: pointer;
+    border: none;
+    background: none;
+    outline: none;
+  }
+
+  input, textarea, select {
+    font-family: var(--font-body);
+  }
+
+  img {
+    max-width: 100%;
+    height: auto;
+  }
+
+  ::selection {
+    background-color: var(--color-brand-500);
+    color: white;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--color-surface-dark);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-surface-border);
+    border-radius: var(--radius-full);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-brand-500);
+  }
+}
+
+/* ==========================================
+   Component Utilities
+   ========================================== */
+
+@layer components {
+  .glass-card {
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--color-surface-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+  }
+
+  .glass-card-hover {
+    transition: all var(--transition-base);
+  }
+  .glass-card-hover:hover {
+    border-color: var(--color-brand-500);
+    box-shadow: var(--shadow-glow-sm);
+    transform: translateY(-2px);
+  }
+
+  /* Buttons — Kahoot style: bold type, hard bottom shelf, presses down */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    border-radius: var(--radius-md);
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 0.9375rem;
+    letter-spacing: 0.01em;
+    transition: all var(--transition-fast);
+    white-space: nowrap;
+    line-height: 1;
+    position: relative;
+    text-shadow: none;
+  }
+
+  .btn-primary {
+    background: linear-gradient(180deg, var(--color-brand-500), var(--color-brand-600));
+    color: white;
+    box-shadow: 0 4px 0 var(--color-brand-800);
+  }
+  .btn-primary:hover {
+    background: linear-gradient(180deg, var(--color-brand-400), var(--color-brand-500));
+    box-shadow: 0 5px 0 var(--color-brand-800);
+    transform: translateY(-1px);
+  }
+  .btn-primary:active {
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 var(--color-brand-800);
+  }
+
+  .btn-secondary {
+    background: var(--color-surface-elevated);
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-surface-border);
+    box-shadow: 0 4px 0 var(--color-surface-border);
+  }
+  .btn-secondary:hover {
+    background: var(--color-surface-hover);
+    border-color: var(--color-brand-500);
+    color: var(--color-brand-700);
+    box-shadow: 0 5px 0 var(--color-surface-border);
+    transform: translateY(-1px);
+  }
+  .btn-secondary:active {
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 var(--color-surface-border);
+  }
+
+  .btn-ghost {
+    color: var(--color-text-secondary);
+    box-shadow: none;
+  }
+  .btn-ghost:hover {
+    color: var(--color-brand-700);
+    background: var(--color-surface-elevated);
+  }
+
+  .btn-danger {
+    background: linear-gradient(180deg, var(--color-option-red), #b91630);
+    color: white;
+    box-shadow: 0 4px 0 #7d0f1f;
+  }
+  .btn-danger:hover {
+    background: linear-gradient(180deg, #f03350, var(--color-option-red));
+    box-shadow: 0 5px 0 #7d0f1f;
+    transform: translateY(-1px);
+  }
+  .btn-danger:active {
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 #7d0f1f;
+  }
+
+  .btn-success {
+    background: linear-gradient(180deg, var(--color-option-green), #1c6409);
+    color: white;
+    box-shadow: 0 4px 0 #103f05;
+  }
+  .btn-success:hover {
+    background: linear-gradient(180deg, #2fa411, var(--color-option-green));
+    box-shadow: 0 5px 0 #103f05;
+    transform: translateY(-1px);
+  }
+  .btn-success:active {
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 #103f05;
+  }
+
+  .btn-lg {
+    padding: 1rem 2rem;
+    font-size: 1.125rem;
+    border-radius: var(--radius-lg);
+  }
+
+  .btn-sm {
+    padding: 0.5rem 1rem;
+    font-size: 0.8125rem;
+  }
+
+  .btn-icon {
+    padding: 0.625rem;
+    border-radius: var(--radius-md);
+  }
+
+  /* Inputs */
+  .input {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background: var(--color-surface-elevated);
+    border: 1px solid var(--color-surface-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-primary);
+    font-size: 0.9375rem;
+    transition: all var(--transition-fast);
+    outline: none;
+  }
+  .input:focus {
+    border-color: var(--color-brand-500);
+    box-shadow: 0 0 0 3px rgba(116, 36, 232, 0.18);
+  }
+  .input::placeholder {
+    color: var(--color-text-muted);
+  }
+
+  .input-lg {
+    padding: 1rem 1.25rem;
+    font-size: 1.125rem;
+    border-radius: var(--radius-lg);
+  }
+
+  /* Badges */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: var(--radius-full);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.025em;
+    text-transform: uppercase;
+  }
+
+  .badge-draft {
+    background: rgba(217, 119, 6, 0.12);
+    color: #a8620a;
+    border: 1px solid rgba(217, 119, 6, 0.35);
+  }
+
+  .badge-published {
+    background: rgba(4, 120, 87, 0.12);
+    color: #047857;
+    border: 1px solid rgba(4, 120, 87, 0.35);
+  }
+
+  .badge-archived {
+    background: rgba(122, 107, 166, 0.12);
+    color: var(--color-text-secondary);
+    border: 1px solid rgba(122, 107, 166, 0.3);
+  }
+
+  /* Option cards for quiz answers */
+  .option-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    border-radius: var(--radius-lg);
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: white;
+    cursor: pointer;
+    transition: all var(--transition-base);
+    border: 2px solid transparent;
+    position: relative;
+    overflow: hidden;
+  }
+  .option-card:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 16px rgba(23, 11, 46, 0.22);
+  }
+  .option-card:active {
+    transform: scale(0.98);
+  }
+
+  .option-red { background: var(--color-option-red); }
+  .option-blue { background: var(--color-option-blue); }
+  .option-yellow { background: var(--color-option-yellow); color: #170b2e; }
+  .option-green { background: var(--color-option-green); }
+
+  .option-correct {
+    border-color: var(--color-accent-emerald) !important;
+    box-shadow: 0 0 20px rgba(4, 120, 87, 0.4) !important;
+  }
+  .option-incorrect {
+    opacity: 0.4;
+  }
+  .option-selected-wrong {
+    border-color: var(--color-option-red) !important;
+    box-shadow: 0 0 20px rgba(226, 27, 60, 0.4) !important;
+    opacity: 1;
+  }
+}
+
+/* ==========================================
+   Animations
+   ========================================== */
+
+@layer utilities {
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 20px rgba(116, 36, 232, 0.2); }
+    50% { box-shadow: 0 0 40px rgba(116, 36, 232, 0.35); }
+  }
+
+  @keyframes shimmer {
+    0% { background-position: -200% center; }
+    100% { background-position: 200% center; }
+  }
+
+  @keyframes count-up {
+    0% { transform: scale(0.5); opacity: 0; }
+    50% { transform: scale(1.2); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  @keyframes confetti-fall {
+    0% { transform: translateY(-100vh) rotate(0deg); opacity: 1; }
+    100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+  }
+
+  @keyframes slide-up {
+    0% { transform: translateY(20px); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+
+  @keyframes slide-in-right {
+    0% { transform: translateX(20px); opacity: 0; }
+    100% { transform: translateX(0); opacity: 1; }
+  }
+
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+
+  .animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  .animate-shimmer {
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.1) 50%, transparent 100%);
+    background-size: 200% auto;
+    animation: shimmer 2s linear infinite;
+  }
+
+  .animate-slide-up {
+    animation: slide-up 0.5s ease-out forwards;
+  }
+
+  .animate-count-up {
+    animation: count-up 0.6s ease-out forwards;
+  }
+}
+
+/* ==========================================
+   Page backgrounds
+   ========================================== */
+
+.bg-grid-pattern {
+  background-image:
+    linear-gradient(rgba(116, 36, 232, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(116, 36, 232, 0.06) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.bg-hero-gradient {
+  background:
+    radial-gradient(ellipse at 18% 45%, rgba(116, 36, 232, 0.16) 0%, transparent 55%),
+    radial-gradient(ellipse at 85% 15%, rgba(70, 23, 143, 0.14) 0%, transparent 45%),
+    radial-gradient(ellipse at 55% 95%, rgba(225, 29, 72, 0.1) 0%, transparent 45%),
+    linear-gradient(165deg, #ffffff 0%, var(--color-surface-dark) 70%);
+}
+
+/* Game PIN display */
+.game-pin {
+  font-family: var(--font-mono);
+  font-size: 3rem;
+  font-weight: 800;
+  letter-spacing: 0.5rem;
+  color: var(--color-brand-700);
+  text-shadow: 0 2px 20px rgba(116, 36, 232, 0.35);
+}
+
+/* Timer ring */
+.timer-ring {
+  stroke-dasharray: 283;
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 1s linear;
+  transform: rotate(-90deg);
+  transform-origin: center;
+}
+
+/* Podium */
+.podium-1st { background: linear-gradient(180deg, #ffd400 0%, #e6a800 100%); }
+.podium-2nd { background: linear-gradient(180deg, #d8d8e6 0%, #a8a8c0 100%); }
+.podium-3rd { background: linear-gradient(180deg, #e2793c 0%, #b45309 100%); }
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
