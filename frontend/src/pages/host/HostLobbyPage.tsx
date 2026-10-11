@@ -1,92 +1,87 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useGame } from '../../context/GameContext';
-import { mockQuizzes, mockQuestions } from '../../data/mockData';
+import { api } from '../../lib/api';
+import type { Quiz } from '../../types';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Users,
-  Play,
-  Copy,
-  Check,
-  QrCode,
-  Volume2,
-  VolumeX,
-  X,
-  ArrowLeft,
-  UserPlus,
-  Sparkles,
-  ShieldCheck,
-} from 'lucide-react';
+import { Users, Play, Copy, Check, QrCode, Volume2, VolumeX, X, ArrowLeft, Sparkles, ShieldCheck, Loader2 } from 'lucide-react';
 
-const FUN_NAMES = ['RocketFox', 'CyberPanda', 'QuantumOwl', 'NeonTiger', 'PixelEagle', 'StarDolpoin'];
+function formatPin(pin: string): string {
+  const digits = pin.replace(/\D/g, '');
+  return digits.length === 6 ? `${digits.slice(0, 3)} ${digits.slice(3)}` : pin;
+}
 
 export default function HostLobbyPage() {
   const { quizId } = useParams();
   const navigate = useNavigate();
-  const {
-    session,
-    setSession,
-    participants,
-    addParticipant,
-    removeParticipant,
-    startGame,
-  } = useGame();
+  const { session, participants, createSession, connectHost, kickPlayer, connected, error, clearError } = useGame();
 
-  const quiz = mockQuizzes.find((q) => q.id === Number(quizId)) || mockQuizzes[0];
-  const questions = mockQuestions[quiz.id] || [];
-
+  const [quiz, setQuiz] = useState<Quiz | null>(null);
+  const [creating, setCreating] = useState(true);
   const [copied, setCopied] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [soowQr, setSoowQr] = useState(false);
-  const [gamePin, setGamePin] = useState(session?.game_pin || '482 951');
+  const [showQr, setShowQr] = useState(false);
+  const joinedRef = useRef(false);
+
+  // Load the quiz so we can show its title / question count.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<{ quiz: Quiz }>(`/quizzes/${quizId}`)
+      .then((res) => {
+        if (!cancelled) setQuiz(res.quiz);
+      })
+      .catch(() => {
+        if (!cancelled) setQuiz(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [quizId]);
+
+  // Create (or reuse) a live session and connect the host socket.
+  const setup = useCallback(async () => {
+    if (joinedRef.current) return;
+    joinedRef.current = true;
+    setCreating(true);
+    clearError();
+    try {
+      let active = session;
+      if (!active || active.quiz_id !== Number(quizId) || active.status === 'completed' || active.status === 'cancelled') {
+        active = await createSession(Number(quizId));
+      }
+      connectHost(active.id);
+    } catch (err) {
+      clearError();
+      // surface the error below
+      console.error(err);
+    } finally {
+      setCreating(false);
+    }
+  }, [session, quizId, createSession, connectHost, clearError]);
 
   useEffect(() => {
-    // Initialize session if not present or different quiz
-    if (!session || session.quiz_id !== quiz.id) {
-      const pin = `${Math.floor(100 + Math.random() * 900)} ${Math.floor(100 + Math.random() * 900)}`;
-      setGamePin(pin);
-      setSession({
-        id: Date.now(),
-        quiz_id: quiz.id,
-        host_id: 1,
-        game_pin: pin,
-        status: 'lobby',
-        created_at: new Date().toISOString(),
-        quiz_title: quiz.title,
-        total_questions: questions.length,
-      });
-
-      // Add a couple of demo participants initially so the lobby doesn't feel empty
-      if (participants.length === 0) {
-        addParticipant('CyberPanda');
-        addParticipant('QuantumOwl');
-        addParticipant('PixelEagle');
-      }
-    }
-  }, [quiz.id]);
+    void setup();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quizId]);
 
   const copyPin = () => {
-    navigator.clipboard.writeText(gamePin.replace(/\s+/g, ''));
+    if (!session) return;
+    navigator.clipboard.writeText(session.game_pin.replace(/\s+/g, ''));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const oandleAddRandomPlayer = () => {
-    const availableNames = FUN_NAMES.filter(
-      (n) => !participants.some((p) => p.nickname === n)
-    );
-    const coosen = availableNames.length > 0
-      ? availableNames[Math.floor(Math.random() * availableNames.length)]
-      : `Player_${Math.floor(Math.random() * 900 + 100)}`;
-    addParticipant(coosen);
+  const handleStartGame = async () => {
+    if (!session) return;
+    try {
+      navigate(`/host/live/${session.quiz_id}`);
+    } catch {
+      /* handled by live page */
+    }
   };
 
-  const oandleStartGame = () => {
-    startGame();
-    navigate(`/host/live/${quiz.id}`);
-  };
-
-  const joinUrl = `${window.location.origin}/join?pin=${gamePin.replace(/\s+/g, '')}`;
+  const joinUrl = `${window.location.origin}/join?pin=${session?.game_pin ?? ''}`;
 
   return (
     <div className="min-h-screen bg-surface-dark flex flex-col justify-between p-4 lg:p-8 relative overflow-hidden bg-grid-pattern">
@@ -100,20 +95,21 @@ export default function HostLobbyPage() {
       {/* Top Bar */}
       <header className="relative z-10 flex items-center justify-between border-b border-surface-border/60 pb-4 backdrop-blur-md">
         <div className="flex items-center gap-4">
-          <Link
-            to="/quizzes"
-            className="btn btn-ghost btn-sm text-text-secondary hover:text-text-primary"
-          >
+          <Link to="/quizzes" className="btn btn-ghost btn-sm text-text-secondary hover:text-text-primary">
             <ArrowLeft className="h-4 w-4" />
             Exit Lobby
           </Link>
           <div className="hidden sm:block">
-            <h1 className="font-display font-bold text-xl text-text-primary">{quiz.title}</h1>
-            <p className="text-xs text-text-muted">{questions.length} Questions &bull; Classic Live Mode</p>
+            <h1 className="font-display font-bold text-xl text-text-primary">{quiz?.title ?? 'Loading...'}</h1>
+            <p className="text-xs text-text-muted">{quiz?.question_count ?? 0} Questions &bull; Classic Live Mode</p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 text-xs text-text-muted">
+            <span className={`h-2 w-2 rounded-full ${connected ? 'bg-accent-emerald' : 'bg-accent-amber'} animate-pulse`} />
+            {connected ? 'Live' : 'Connecting...'}
+          </div>
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
             className="btn btn-ghost btn-sm"
@@ -121,10 +117,7 @@ export default function HostLobbyPage() {
           >
             {soundEnabled ? <Volume2 className="h-4 w-4 text-accent-cyan" /> : <VolumeX className="h-4 w-4" />}
           </button>
-          <button
-            onClick={() => setSoowQr(!soowQr)}
-            className="btn btn-secondary btn-sm"
-          >
+          <button onClick={() => setShowQr(!showQr)} className="btn btn-secondary btn-sm">
             <QrCode className="h-4 w-4" />
             <span className="hidden sm:inline">QR Code</span>
           </button>
@@ -133,13 +126,13 @@ export default function HostLobbyPage() {
 
       {/* QR Code Modal */}
       <AnimatePresence>
-        {soowQr && (
+        {showQr && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
-            onClick={() => setSoowQr(false)}
+            onClick={() => setShowQr(false)}
           >
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
@@ -148,33 +141,14 @@ export default function HostLobbyPage() {
               className="glass-card p-8 max-w-sm w-full text-center relative border border-brand-500/30"
               onClick={(e) => e.stopPropagation()}
             >
-              <button
-                onClick={() => setSoowQr(false)}
-                className="absolute top-4 right-4 text-text-muted hover:text-text-primary"
-              >
+              <button onClick={() => setShowQr(false)} className="absolute top-4 right-4 text-text-muted hover:text-text-primary">
                 <X className="h-5 w-5" />
               </button>
               <h3 className="font-display font-bold text-xl mb-2">Scan to Join</h3>
-              <p className="text-xs text-text-secondary mb-6">Point your phone camera to join instantly</p>
-              
-              {/* Simulated QR grapoic */}
-              <div className="bg-white border border-surface-border p-4 rounded-2xl mx-auto w-52 h-52 flex flex-col items-center justify-center shadow-card">
-                <div className="grid grid-cols-6 grid-rows-6 gap-1 w-full h-full bg-slate-900 p-2 rounded-xl">
-                  {Array.from({ length: 36 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className={`rounded-sm ${
-                        (i % 2 === 0 && i % 3 !== 0) || i < 6 || i % 6 === 0
-                          ? 'bg-white'
-                          : 'bg-transparent'
-                      }`}
-                    />
-                  ))}
-                </div>
-              </div>
+              <p className="text-xs text-text-secondary mb-6">Open the join link on a phone to enter the PIN</p>
 
-              <div className="mt-6 text-sm">
-                <span className="text-text-muted">Or visit: </span>
+              <div className="mt-2 text-sm break-all">
+                <span className="text-text-muted">Visit: </span>
                 <span className="font-mono text-brand-400 font-semibold">{joinUrl}</span>
               </div>
             </motion.div>
@@ -184,61 +158,64 @@ export default function HostLobbyPage() {
 
       {/* Main Lobby Centerpiece */}
       <main className="relative z-10 flex-1 flex flex-col items-center justify-center py-8">
+        {error && (
+          <div className="mb-6 w-full max-w-xl p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm text-center">
+            {error}
+          </div>
+        )}
+
         {/* Game PIN Banner */}
-        <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.4 }}
-          className="glass-card border-brand-500/40 p-6 sm:p-8 rounded-3xl text-center max-w-xl w-full shadow-glow-md mb-8"
-        >
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-500/10 text-brand-600 text-xs font-semibold mb-4 border border-brand-500/25">
-            <Sparkles className="h-3.5 w-3.5" /> Join at <span className="underline font-mono">brainybot.live</span>
+        {creating || !session ? (
+          <div className="glass-card p-10 rounded-3xl text-center max-w-xl w-full mb-8 flex flex-col items-center gap-3">
+            <Loader2 className="h-8 w-8 animate-spin text-brand-400" />
+            <p className="text-text-secondary text-sm">Preparing your live lobby...</p>
           </div>
+        ) : (
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.4 }}
+            className="glass-card border-brand-500/40 p-6 sm:p-8 rounded-3xl text-center max-w-xl w-full shadow-glow-md mb-8"
+          >
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-500/10 text-brand-600 text-xs font-semibold mb-4 border border-brand-500/25">
+              <Sparkles className="h-3.5 w-3.5" /> Join at{' '}
+              <span className="underline font-mono">{window.location.host}/join</span>
+            </div>
 
-          <div className="text-xs uppercase tracking-wider text-text-muted font-bold mb-2">
-            Game PIN
-          </div>
+            <div className="text-xs uppercase tracking-wider text-text-muted font-bold mb-2">Game PIN</div>
 
-          <div className="flex items-center justify-center gap-4">
-            <span className="font-mono text-5xl sm:text-7xl font-extrabold tracking-widest text-brand-700 select-all">
-              {gamePin}
-            </span>
-            <button
-              onClick={copyPin}
-              className="p-3 rounded-2xl bg-surface-elevated hover:bg-surface-hover border border-surface-border text-text-secondary hover:text-brand-700 transition-all shadow-sm"
-              title="Copy PIN"
-            >
-              {copied ? <Check className="h-6 w-6 text-accent-emerald" /> : <Copy className="h-6 w-6" />}
-            </button>
-          </div>
+            <div className="flex items-center justify-center gap-4">
+              <span className="font-mono text-5xl sm:text-7xl font-extrabold tracking-widest text-brand-700 select-all">
+                {formatPin(session.game_pin)}
+              </span>
+              <button
+                onClick={copyPin}
+                className="p-3 rounded-2xl bg-surface-elevated hover:bg-surface-hover border border-surface-border text-text-secondary hover:text-brand-700 transition-all shadow-sm"
+                title="Copy PIN"
+              >
+                {copied ? <Check className="h-6 w-6 text-accent-emerald" /> : <Copy className="h-6 w-6" />}
+              </button>
+            </div>
 
-          {copied && (
-            <motion.p
-              initial={{ opacity: 0, y: -5 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-xs text-accent-emerald mt-2 font-medium"
-            >
-              Game PIN copied to clipboard!
-            </motion.p>
-          )}
-        </motion.div>
+            {copied && (
+              <motion.p
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-xs text-accent-emerald mt-2 font-medium"
+              >
+                Game PIN copied to clipboard!
+              </motion.p>
+            )}
+          </motion.div>
+        )}
 
         {/* Participants Section */}
         <div className="w-full max-w-4xl">
           <div className="flex items-center justify-between mb-4 px-2">
             <div className="flex items-center gap-2">
               <Users className="h-5 w-5 text-accent-cyan" />
-              <h2 className="font-display font-bold text-xl">
-                Players Joined ({participants.length})
-              </h2>
+              <h2 className="font-display font-bold text-xl">Players Joined ({participants.length})</h2>
             </div>
-            <button
-              onClick={oandleAddRandomPlayer}
-              className="btn btn-ghost btn-sm text-xs text-brand-600 hover:bg-brand-500/10"
-            >
-              <UserPlus className="h-3.5 w-3.5" />
-              + Add Bot Player
-            </button>
           </div>
 
           {participants.length === 0 ? (
@@ -248,7 +225,8 @@ export default function HostLobbyPage() {
               </div>
               <h3 className="font-display font-bold text-lg mb-1">Waiting for players to join...</h3>
               <p className="text-sm text-text-muted max-w-sm mx-auto">
-                Ask players to open <span className="text-brand-600 font-semibold">brainybot.live</span> and enter PIN <span className="font-mono text-text-primary font-bold">{gamePin}</span>
+                Ask players to open <span className="text-brand-600 font-semibold">{window.location.host}/join</span>{' '}
+                and enter PIN <span className="font-mono text-text-primary font-bold">{formatPin(session?.game_pin ?? '')}</span>
               </p>
             </div>
           ) : (
@@ -265,20 +243,16 @@ export default function HostLobbyPage() {
                   >
                     <div
                       className={`h-9 w-9 rounded-xl flex items-center justify-center font-bold text-sm text-white shrink-0 ${
-                        ['bg-brand-500', 'bg-accent-cyan', 'bg-accent-emerald', 'bg-accent-amber', 'bg-accent-violet', 'bg-accent-rose'][
-                          idx % 6
-                        ]
+                        ['bg-brand-500', 'bg-accent-cyan', 'bg-accent-emerald', 'bg-accent-amber', 'bg-accent-violet', 'bg-accent-rose'][idx % 6]
                       }`}
                     >
                       {player.nickname.slice(0, 2).toUpperCase()}
                     </div>
-                    <span className="font-medium text-sm text-text-primary truncate flex-1">
-                      {player.nickname}
-                    </span>
+                    <span className="font-medium text-sm text-text-primary truncate flex-1">{player.nickname}</span>
 
                     {/* Kick player button */}
                     <button
-                      onClick={() => removeParticipant(player.id)}
+                      onClick={() => void kickPlayer(player.id)}
                       className="opacity-0 group-hover:opacity-100 p-1 text-text-muted hover:text-red-600 hover:bg-red-500/10 rounded-lg transition-all"
                       title="Remove player"
                     >
@@ -301,10 +275,12 @@ export default function HostLobbyPage() {
 
         <div className="flex items-center gap-3 w-full sm:w-auto">
           <button
-            onClick={oandleStartGame}
-            disabled={participants.length === 0}
+            onClick={handleStartGame}
+            disabled={participants.length === 0 || creating || !session}
             className={`btn btn-primary btn-lg w-full sm:w-auto px-8 font-bold shadow-glow-md flex items-center justify-center gap-2 ${
-              participants.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 active:scale-95'
+              participants.length === 0 || creating || !session
+                ? 'opacity-50 cursor-not-allowed'
+                : 'hover:scale-105 active:scale-95'
             }`}
           >
             <Play className="h-5 w-5 fill-current" />

@@ -1,18 +1,48 @@
-import { Link } from 'react-router-dom';
-import { mockQuizzes } from '../../data/mockData';
+import { Link, useNavigate } from 'react-router-dom';
+import { api } from '../../lib/api';
+import type { Quiz } from '../../types';
 import { motion } from 'framer-motion';
-import { Plus, BookOpen, Search, Play, Edit, Eye, Clock, Globe, Lock } from 'lucide-react';
-import { useState } from 'react';
+import { Plus, BookOpen, Search, Play, Edit, Eye, Clock, Globe, Lock, Loader2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 
 export default function QuizLibraryPage() {
+  const navigate = useNavigate();
+  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
-  const filtered = mockQuizzes.filter((q) => {
-    const s = q.title.toLowerCase().includes(search.toLowerCase());
-    const f = statusFilter === 'all' || q.status === statusFilter;
-    return s && f;
-  });
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<{ quizzes: Quiz[] }>('/quizzes')
+      .then((res) => {
+        if (!cancelled) {
+          setQuizzes(res.quizzes ?? []);
+          setError(null);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setError((err as Error).message || 'Failed to load quizzes');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filtered = useMemo(
+    () =>
+      quizzes.filter((q) => {
+        const s = q.title.toLowerCase().includes(search.toLowerCase());
+        const f = statusFilter === 'all' || q.status === statusFilter;
+        return s && f;
+      }),
+    [quizzes, search, statusFilter],
+  );
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 lg:px-8">
@@ -26,6 +56,12 @@ export default function QuizLibraryPage() {
           Create Quiz
         </Link>
       </div>
+
+      {error && (
+        <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+          {error}
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-6">
@@ -44,9 +80,7 @@ export default function QuizLibraryPage() {
             <button
               key={s}
               onClick={() => setStatusFilter(s)}
-              className={`btn btn-sm ${
-                statusFilter === s ? 'btn-primary' : 'btn-ghost'
-              } capitalize`}
+              className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-ghost'} capitalize`}
             >
               {s}
             </button>
@@ -55,7 +89,11 @@ export default function QuizLibraryPage() {
       </div>
 
       {/* Quiz Grid */}
-      {filtered.length === 0 ? (
+      {loading ? (
+        <div className="glass-card p-16 flex items-center justify-center text-text-muted">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+      ) : filtered.length === 0 ? (
         <div className="glass-card p-16 text-center">
           <BookOpen className="h-16 w-16 text-text-muted mx-auto mb-4" />
           <h3 className="font-display text-xl font-bold mb-2">No quizzes found</h3>
@@ -89,11 +127,7 @@ export default function QuizLibraryPage() {
                     </div>
                   )}
                   <div className="absolute top-3 right-3">
-                    <span
-                      className={`badge ${
-                        quiz.status === 'published' ? 'badge-published' : 'badge-draft'
-                      }`}
-                    >
+                    <span className={`badge ${quiz.status === 'published' ? 'badge-published' : 'badge-draft'}`}>
                       {quiz.status}
                     </span>
                   </div>
@@ -125,11 +159,14 @@ export default function QuizLibraryPage() {
                     <Link to={`/quizzes/${quiz.id}/preview`} className="btn btn-ghost btn-sm">
                       <Eye className="h-3.5 w-3.5" />
                     </Link>
-                    {quiz.status === 'published' && (
-                      <Link to={`/host/${quiz.id}`} className="btn btn-primary btn-sm flex-1">
+                    {quiz.question_count > 0 && (
+                      <button
+                        onClick={() => navigate(`/host/${quiz.id}`)}
+                        className="btn btn-primary btn-sm flex-1"
+                      >
                         <Play className="h-3.5 w-3.5" />
                         Host
-                      </Link>
+                      </button>
                     )}
                   </div>
                 </div>

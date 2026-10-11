@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { mockQuizzes, mockQuestions } from '../../data/mockData';
+import { api } from '../../lib/api';
+import type { Quiz, Question } from '../../types';
 import {
   ArrowLeft,
   Play,
@@ -10,17 +11,40 @@ import {
   CheckCircle,
   ChevronLeft,
   ChevronRight,
+  Loader2,
 } from 'lucide-react';
 
 export default function QuizPreviewPage() {
   const { quizId } = useParams();
-
-  const quiz = mockQuizzes.find((q) => q.id === Number(quizId)) || mockQuizzes[0];
-  const questions = mockQuestions[quiz.id] || [];
+  const [quiz, setQuiz] = useState<(Quiz & { questions: Question[] }) | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const [currentIdx, setCurrentIdx] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
 
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<{ quiz: Quiz & { questions: Question[] } }>(`/quizzes/${quizId}`)
+      .then((res) => {
+        if (!cancelled) {
+          setQuiz(res.quiz);
+          setError(null);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setError((err as Error).message || 'Failed to load quiz');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [quizId]);
+
+  const questions = quiz?.questions ?? [];
   const q = questions[currentIdx];
 
   const handleNext = () => {
@@ -37,12 +61,31 @@ export default function QuizPreviewPage() {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-16 flex items-center justify-center text-text-muted">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
+
+  if (error || !quiz) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-16 text-center">
+        <h2 className="text-2xl font-bold text-red-400">{error || 'Quiz not found.'}</h2>
+        <Link to="/quizzes" className="btn btn-primary mt-4">
+          Back to Quizzes
+        </Link>
+      </div>
+    );
+  }
+
   if (!q) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-16 text-center">
         <h2 className="text-2xl font-bold">No questions found for this quiz.</h2>
-        <Link to="/quizzes" className="btn btn-primary mt-4">
-          Back to Quizzes
+        <Link to={`/quizzes/${quiz.id}/edit`} className="btn btn-primary mt-4">
+          Add Questions
         </Link>
       </div>
     );
@@ -88,17 +131,18 @@ export default function QuizPreviewPage() {
       <div className="glass-card p-6 sm:p-8 rounded-3xl border border-surface-border mb-6 relative">
         <div className="flex items-center justify-between text-xs text-text-muted mb-4">
           <span className="uppercase font-bold tracking-wider text-brand-400">
-            Question {currentIdx + 1} &bull; {q.question_type === 'true_false' ? 'True / False' : 'Multiple Choice'}
+            Question {currentIdx + 1} &bull;{' '}
+            {q.question_type === 'true_false' ? 'True / False' : 'Multiple Choice'}
           </span>
           <div className="flex items-center gap-1">
             <Clock className="h-3.5 w-3.5 text-accent-cyan" />
-            <span>{q.time_limit_seconds}s limit &bull; {q.base_points} pts</span>
+            <span>
+              {q.time_limit_seconds}s limit &bull; {q.base_points} pts
+            </span>
           </div>
         </div>
 
-        <h2 className="font-display text-xl sm:text-2xl font-bold text-text-primary mb-6">
-          {q.question_text}
-        </h2>
+        <h2 className="font-display text-xl sm:text-2xl font-bold text-text-primary mb-6">{q.question_text}</h2>
 
         {/* Options */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
@@ -114,9 +158,7 @@ export default function QuizPreviewPage() {
                 }`}
               >
                 <span className="font-medium">{opt.option_text}</span>
-                {showAnswer && isCorrect && (
-                  <CheckCircle className="h-5 w-5 text-emerald-700 shrink-0" />
-                )}
+                {showAnswer && isCorrect && <CheckCircle className="h-5 w-5 text-emerald-700 shrink-0" />}
               </div>
             );
           })}
@@ -124,28 +166,19 @@ export default function QuizPreviewPage() {
 
         {/* Answer Reveal Toggle */}
         <div className="flex items-center justify-between pt-4 border-t border-surface-border">
-          <button
-            onClick={() => setShowAnswer(!showAnswer)}
-            className="btn btn-secondary btn-sm"
-          >
+          <button onClick={() => setShowAnswer(!showAnswer)} className="btn btn-secondary btn-sm">
             {showAnswer ? 'Hide Correct Answer' : 'Reveal Correct Answer'}
           </button>
 
           {showAnswer && q.explanation && (
-            <p className="text-xs text-text-secondary max-w-md italic text-right">
-              &quot;{q.explanation}&quot;
-            </p>
+            <p className="text-xs text-text-secondary max-w-md italic text-right">&quot;{q.explanation}&quot;</p>
           )}
         </div>
       </div>
 
       {/* Pagination Controls */}
       <div className="flex items-center justify-between">
-        <button
-          onClick={handlePrev}
-          disabled={currentIdx === 0}
-          className="btn btn-ghost btn-sm"
-        >
+        <button onClick={handlePrev} disabled={currentIdx === 0} className="btn btn-ghost btn-sm">
           <ChevronLeft className="h-4 w-4" /> Previous
         </button>
 
@@ -168,11 +201,7 @@ export default function QuizPreviewPage() {
           ))}
         </div>
 
-        <button
-          onClick={handleNext}
-          disabled={currentIdx + 1 >= questions.length}
-          className="btn btn-ghost btn-sm"
-        >
+        <button onClick={handleNext} disabled={currentIdx + 1 >= questions.length} className="btn btn-ghost btn-sm">
           Next <ChevronRight className="h-4 w-4" />
         </button>
       </div>

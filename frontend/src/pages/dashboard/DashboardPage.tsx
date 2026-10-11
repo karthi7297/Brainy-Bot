@@ -1,38 +1,74 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { mockQuizzes, mockSessions } from '../../data/mockData';
+import { api } from '../../lib/api';
+import type { Quiz, GameSession } from '../../types';
 import { motion } from 'framer-motion';
 import {
   Plus,
   BookOpen,
   Users,
   Trophy,
-  TrendingUp,
-  Clock,
   Play,
   Edit,
-  MoreHorizontal,
+  Clock,
   Search,
   Filter,
+  Loader2,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+  const [sessions, setSessions] = useState<GameSession[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  const filteredQuizzes = mockQuizzes.filter((q) => {
-    const matchesSearch = q.title.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || q.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    Promise.all([
+      api.get<{ quizzes: Quiz[] }>('/quizzes'),
+      api.get<{ sessions: GameSession[] }>('/sessions'),
+    ])
+      .then(([qRes, sRes]) => {
+        if (cancelled) return;
+        setQuizzes(qRes.quizzes ?? []);
+        setSessions(sRes.sessions ?? []);
+        setError(null);
+      })
+      .catch((err) => {
+        if (!cancelled) setError((err as Error).message || 'Failed to load dashboard');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filteredQuizzes = useMemo(() => {
+    return quizzes.filter((q) => {
+      const matchesSearch = q.title.toLowerCase().includes(search.toLowerCase());
+      const matchesStatus = statusFilter === 'all' || q.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [quizzes, search, statusFilter]);
+
+  const completedSessions = useMemo(
+    () => sessions.filter((s) => s.status === 'completed' || s.status === 'running'),
+    [sessions],
+  );
 
   const stats = [
-    { label: 'Total Quizzes', value: mockQuizzes.length, icon: BookOpen, color: 'text-brand-400', bg: 'bg-brand-400/10' },
-    { label: 'Games Hosted', value: mockSessions.length, icon: Play, color: 'text-accent-cyan', bg: 'bg-accent-cyan/10' },
-    { label: 'Total Players', value: 14, icon: Users, color: 'text-accent-emerald', bg: 'bg-accent-emerald/10' },
-    { label: 'Avg. Accuracy', value: '72%', icon: TrendingUp, color: 'text-accent-amber', bg: 'bg-accent-amber/10' },
+    { label: 'Total Quizzes', value: quizzes.length, icon: BookOpen, color: 'text-brand-400', bg: 'bg-brand-400/10' },
+    { label: 'Games Hosted', value: sessions.length, icon: Play, color: 'text-accent-cyan', bg: 'bg-accent-cyan/10' },
+    { label: 'Published', value: quizzes.filter((q) => q.status === 'published').length, icon: Users, color: 'text-accent-emerald', bg: 'bg-accent-emerald/10' },
+    { label: 'Drafts', value: quizzes.filter((q) => q.status === 'draft').length, icon: Trophy, color: 'text-accent-amber', bg: 'bg-accent-amber/10' },
   ];
 
   return (
@@ -49,11 +85,17 @@ export default function DashboardPage() {
           </motion.h1>
           <p className="text-text-secondary mt-1">Here's what's happening with your quizzes.</p>
         </div>
-        <Link to="/quizzes/new" className="btn btn-primary">
+        <button onClick={() => navigate('/quizzes/new')} className="btn btn-primary">
           <Plus className="h-4 w-4" />
           Create Quiz
-        </Link>
+        </button>
       </div>
+
+      {error && (
+        <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+          {error}
+        </div>
+      )}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -70,7 +112,9 @@ export default function DashboardPage() {
                 <stat.icon className={`h-5 w-5 ${stat.color}`} />
               </div>
               <div>
-                <div className="font-display text-2xl font-extrabold">{stat.value}</div>
+                <div className="font-display text-2xl font-extrabold">
+                  {loading ? '—' : stat.value}
+                </div>
                 <div className="text-text-muted text-xs">{stat.label}</div>
               </div>
             </div>
@@ -80,10 +124,7 @@ export default function DashboardPage() {
 
       {/* Quick Actions */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-        <Link
-          to="/quizzes/new"
-          className="glass-card glass-card-hover p-5 flex items-center gap-4 group"
-        >
+        <Link to="/quizzes/new" className="glass-card glass-card-hover p-5 flex items-center gap-4 group">
           <div className="p-3 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 group-hover:shadow-glow-sm transition-all">
             <Plus className="h-5 w-5 text-white" />
           </div>
@@ -92,10 +133,7 @@ export default function DashboardPage() {
             <div className="text-text-muted text-sm">Start from scratch</div>
           </div>
         </Link>
-        <Link
-          to="/join"
-          className="glass-card glass-card-hover p-5 flex items-center gap-4 group"
-        >
+        <Link to="/join" className="glass-card glass-card-hover p-5 flex items-center gap-4 group">
           <div className="p-3 rounded-xl bg-gradient-to-br from-accent-cyan to-brand-400 group-hover:shadow-glow-sm transition-all">
             <Play className="h-5 w-5 text-white" />
           </div>
@@ -104,10 +142,7 @@ export default function DashboardPage() {
             <div className="text-text-muted text-sm">Enter a game PIN</div>
           </div>
         </Link>
-        <Link
-          to="/reports"
-          className="glass-card glass-card-hover p-5 flex items-center gap-4 group"
-        >
+        <Link to="/reports" className="glass-card glass-card-hover p-5 flex items-center gap-4 group">
           <div className="p-3 rounded-xl bg-gradient-to-br from-accent-amber to-accent-rose group-hover:shadow-glow-sm transition-all">
             <Trophy className="h-5 w-5 text-white" />
           </div>
@@ -151,7 +186,11 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {filteredQuizzes.length === 0 ? (
+        {loading ? (
+          <div className="p-12 flex items-center justify-center text-text-muted">
+            <Loader2 className="h-6 w-6 animate-spin" />
+          </div>
+        ) : filteredQuizzes.length === 0 ? (
           <div className="p-12 text-center">
             <BookOpen className="h-12 w-12 text-text-muted mx-auto mb-4" />
             <h3 className="font-display text-lg font-bold mb-2">No quizzes found</h3>
@@ -188,7 +227,7 @@ export default function DashboardPage() {
                     )}
                     <div className="min-w-0">
                       <Link
-                        to={`/quizzes/${quiz.id}`}
+                        to={`/quizzes/${quiz.id}/preview`}
                         className="font-semibold text-text-primary hover:text-brand-400 transition-colors truncate block"
                       >
                         {quiz.title}
@@ -224,19 +263,16 @@ export default function DashboardPage() {
                       >
                         <Edit className="h-4 w-4" />
                       </Link>
-                      {quiz.status === 'published' && (
-                        <Link
-                          to={`/host/${quiz.id}`}
+                      {quiz.question_count > 0 && (
+                        <button
+                          onClick={() => navigate(`/host/${quiz.id}`)}
                           className="btn btn-primary btn-sm"
                           title="Host Game"
                         >
                           <Play className="h-3.5 w-3.5" />
                           Host
-                        </Link>
+                        </button>
                       )}
-                      <button className="btn btn-ghost btn-icon btn-sm">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </button>
                     </div>
                   </div>
                 </div>
@@ -251,26 +287,42 @@ export default function DashboardPage() {
         <div className="p-5 border-b border-surface-border">
           <h2 className="font-display text-xl font-bold">Recent Games</h2>
         </div>
-        <div className="divide-y divide-surface-border">
-          {mockSessions.map((session) => (
-            <div key={session.id} className="p-5 flex items-center justify-between hover:bg-surface-elevated/30 transition-colors">
-              <div className="flex items-center gap-4">
-                <div className="p-2.5 rounded-xl bg-accent-emerald/10">
-                  <Trophy className="h-5 w-5 text-accent-emerald" />
-                </div>
-                <div>
-                  <div className="font-semibold">{session.quiz_title}</div>
-                  <div className="text-xs text-text-muted mt-0.5">
-                    PIN: {session.game_pin} · {new Date(session.started_at!).toLocaleDateString()}
+        {loading ? (
+          <div className="p-12 flex items-center justify-center text-text-muted">
+            <Loader2 className="h-6 w-6 animate-spin" />
+          </div>
+        ) : completedSessions.length === 0 ? (
+          <div className="p-10 text-center text-text-secondary text-sm">
+            No games hosted yet. Host a quiz to see it here.
+          </div>
+        ) : (
+          <div className="divide-y divide-surface-border">
+            {completedSessions.slice(0, 8).map((session) => (
+              <div
+                key={session.id}
+                className="p-5 flex items-center justify-between hover:bg-surface-elevated/30 transition-colors"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="p-2.5 rounded-xl bg-accent-emerald/10">
+                    <Trophy className="h-5 w-5 text-accent-emerald" />
+                  </div>
+                  <div>
+                    <div className="font-semibold">{session.quiz_title}</div>
+                    <div className="text-xs text-text-muted mt-0.5">
+                      PIN: {session.game_pin} ·{' '}
+                      {session.started_at
+                        ? new Date(session.started_at).toLocaleDateString()
+                        : new Date(session.created_at).toLocaleDateString()}
+                    </div>
                   </div>
                 </div>
+                <Link to={`/reports/${session.id}`} className="btn btn-ghost btn-sm">
+                  View Report
+                </Link>
               </div>
-              <Link to={`/reports/${session.id}`} className="btn btn-ghost btn-sm">
-                View Report
-              </Link>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

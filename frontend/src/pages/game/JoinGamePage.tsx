@@ -1,16 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useGame } from '../../context/GameContext';
+import { api } from '../../lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Brain,
-  Dice5,
-  ArrowRight,
-  CheckCircle2,
-  Sparkles,
-  ArrowLeft,
-  Loader2,
-} from 'lucide-react';
+import { Brain, Dice5, ArrowRight, CheckCircle2, Sparkles, ArrowLeft, Loader2 } from 'lucide-react';
 
 const RANDOM_NICKNAMES = [
   'TurboCheetah',
@@ -32,21 +25,21 @@ const AVATAR_COLORS = [
   'from-accent-violet to-purple-800',
 ];
 
-const KAHOOT_BG =
-  'linear-gradient(165deg, #5b1fbf 0%, #46178f 45%, #3c00a5 100%)';
+const KAHOOT_BG = 'linear-gradient(165deg, #5b1fbf 0%, #46178f 45%, #3c00a5 100%)';
 
 export default function JoinGamePage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { session, addParticipant, setPlayerParticipant, gameState } = useGame();
+  const { gameState, joinGame, connectPlayer, clearError } = useGame();
 
   const [step, setStep] = useState<'pin' | 'nickname' | 'waiting'>('pin');
   const [pin, setPin] = useState(searchParams.get('pin') || '');
   const [nickname, setNickname] = useState('');
   const [selectedColor, setSelectedColor] = useState(AVATAR_COLORS[0]);
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
 
-  // Automatically advance to nickname if pin is supplied in query string
+  // Automatically advance to nickname if pin is supplied in query string.
   useEffect(() => {
     const queryPin = searchParams.get('pin');
     if (queryPin && queryPin.trim().length >= 4) {
@@ -55,54 +48,60 @@ export default function JoinGamePage() {
     }
   }, [searchParams]);
 
-  // If already joined and game starts running, redirect player to play screen
+  // Once the game starts running, move the player to the play screen.
   useEffect(() => {
     if (step === 'waiting' && (gameState === 'question_active' || gameState === 'question_locked')) {
       navigate('/play');
     }
   }, [step, gameState, navigate]);
 
-  const handlePinSubmit = (e: React.FormEvent) => {
+  const handlePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pin.trim()) {
+    const clean = pin.replace(/\s+/g, '');
+    if (!clean.trim()) {
       setError('Please enter a valid Game PIN');
       return;
     }
+    setBusy(true);
     setError('');
-    setStep('nickname');
+    clearError();
+    try {
+      await api.post('/sessions/lookup', { pin: clean });
+      setStep('nickname');
+    } catch (err) {
+      setError((err as Error).message || 'No game found with that PIN');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleRandomNickname = () => {
-    const random = RANDOM_NICKNAMES[Math.floor(Math.random() * RANDOM_NICKNAMES.length)];
-    setNickname(random);
+    setNickname(RANDOM_NICKNAMES[Math.floor(Math.random() * RANDOM_NICKNAMES.length)]);
   };
 
-  const handleJoinGame = (e: React.FormEvent) => {
+  const handleJoinGame = async (e: React.FormEvent) => {
     e.preventDefault();
+    const cleanPin = pin.replace(/\s+/g, '');
     if (!nickname.trim()) {
       setError('Please choose a nickname');
       return;
     }
-
-    const player = {
-      id: Date.now(),
-      session_id: session?.id || 1,
-      nickname: nickname.trim(),
-      total_score: 0,
-      status: 'connected' as const,
-      joined_at: new Date().toISOString(),
-    };
-
-    addParticipant(player.nickname);
-    setPlayerParticipant(player);
-    setStep('waiting');
+    setBusy(true);
+    setError('');
+    clearError();
+    try {
+      const ps = await joinGame(cleanPin, nickname.trim());
+      connectPlayer(ps);
+      setStep('waiting');
+    } catch (err) {
+      setError((err as Error).message || 'Could not join the game');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
-    <div
-      className="min-h-screen flex flex-col justify-between items-center p-4 relative overflow-hidden"
-      style={{ background: KAHOOT_BG }}
-    >
+    <div className="min-h-screen flex flex-col justify-between items-center p-4 relative overflow-hidden" style={{ background: KAHOOT_BG }}>
       {/* Decorative Kahoot blobs */}
       <div className="absolute -top-24 -left-24 w-72 h-72 rounded-full bg-white/5 blur-2xl pointer-events-none" />
       <div className="absolute bottom-10 -right-24 w-80 h-80 rounded-full bg-[#ff4f81]/20 blur-3xl pointer-events-none" />
@@ -114,9 +113,7 @@ export default function JoinGamePage() {
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 border border-white/20">
             <Brain className="h-5 w-5 text-white" />
           </div>
-          <span className="font-display text-lg font-extrabold text-white tracking-tight">
-            BrainyBot
-          </span>
+          <span className="font-display text-lg font-extrabold text-white tracking-tight">BrainyBot</span>
         </Link>
         <span className="text-xs font-semibold text-white/70">Player Portal</span>
       </header>
@@ -133,12 +130,8 @@ export default function JoinGamePage() {
               exit={{ opacity: 0, y: -15 }}
               className="bg-white rounded-3xl p-7 sm:p-9 shadow-elevated text-center"
             >
-              <h1 className="font-display font-extrabold text-3xl text-[#170b2e] mb-2">
-                Game PIN
-              </h1>
-              <p className="text-sm font-semibold text-[#6b6b8f] mb-7">
-                Enter the PIN displayed on the host screen
-              </p>
+              <h1 className="font-display font-extrabold text-3xl text-[#170b2e] mb-2">Game PIN</h1>
+              <p className="text-sm font-semibold text-[#6b6b8f] mb-7">Enter the PIN displayed on the host screen</p>
 
               <form onSubmit={handlePinSubmit} className="space-y-5">
                 <div>
@@ -156,17 +149,12 @@ export default function JoinGamePage() {
                     autoFocus
                     className="w-full text-center font-mono text-4xl sm:text-5xl font-extrabold tracking-[0.18em] py-4 text-[#170b2e] bg-[#f7f5ff] border-2 border-[#e4dcff] rounded-2xl outline-none focus:border-brand-500 focus:bg-white transition-colors placeholder:text-[#cdc4e6]"
                   />
-                  {error && (
-                    <p className="text-sm font-semibold text-[#e21b3c] mt-3">{error}</p>
-                  )}
+                  {error && <p className="text-sm font-semibold text-[#e21b3c] mt-3">{error}</p>}
                 </div>
 
-                <button
-                  type="submit"
-                  className="btn btn-primary w-full py-4 text-lg rounded-2xl"
-                >
-                  Enter
-                  <ArrowRight className="h-5 w-5" />
+                <button type="submit" disabled={busy} className="btn btn-primary w-full py-4 text-lg rounded-2xl">
+                  {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Enter'}
+                  {!busy && <ArrowRight className="h-5 w-5" />}
                 </button>
               </form>
             </motion.div>
@@ -194,12 +182,8 @@ export default function JoinGamePage() {
                 </div>
               </div>
 
-              <h2 className="font-display font-extrabold text-2xl text-[#170b2e] mb-1">
-                Nickname
-              </h2>
-              <p className="text-sm font-semibold text-[#6b6b8f] mb-6">
-                Pick a name for the leaderboard
-              </p>
+              <h2 className="font-display font-extrabold text-2xl text-[#170b2e] mb-1">Nickname</h2>
+              <p className="text-sm font-semibold text-[#6b6b8f] mb-6">Pick a name for the leaderboard</p>
 
               <form onSubmit={handleJoinGame} className="space-y-4">
                 <div className="relative">
@@ -233,24 +217,17 @@ export default function JoinGamePage() {
                       type="button"
                       onClick={() => setSelectedColor(col)}
                       className={`w-7 h-7 rounded-full bg-gradient-to-br ${col} transition-all ${
-                        selectedColor === col
-                          ? 'ring-2 ring-[#170b2e] ring-offset-2 scale-110'
-                          : 'opacity-60 hover:opacity-100'
+                        selectedColor === col ? 'ring-2 ring-[#170b2e] ring-offset-2 scale-110' : 'opacity-60 hover:opacity-100'
                       }`}
                     />
                   ))}
                 </div>
 
-                {error && (
-                  <p className="text-sm font-semibold text-[#e21b3c]">{error}</p>
-                )}
+                {error && <p className="text-sm font-semibold text-[#e21b3c]">{error}</p>}
 
-                <button
-                  type="submit"
-                  className="btn btn-primary w-full py-4 text-lg rounded-2xl"
-                >
-                  Let's go!
-                  <Sparkles className="h-5 w-5" />
+                <button type="submit" disabled={busy} className="btn btn-primary w-full py-4 text-lg rounded-2xl">
+                  {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : "Let's go!"}
+                  {!busy && <Sparkles className="h-5 w-5" />}
                 </button>
               </form>
             </motion.div>
@@ -272,12 +249,8 @@ export default function JoinGamePage() {
                 <CheckCircle2 className="h-3.5 w-3.5" /> You're in!
               </div>
 
-              <h2 className="font-display font-extrabold text-2xl text-[#170b2e] mb-1">
-                {nickname}
-              </h2>
-              <p className="text-sm font-semibold text-[#6b6b8f] mb-6">
-                See your name on the host screen?
-              </p>
+              <h2 className="font-display font-extrabold text-2xl text-[#170b2e] mb-1">{nickname}</h2>
+              <p className="text-sm font-semibold text-[#6b6b8f] mb-6">See your name on the host screen?</p>
 
               <div className="p-4 rounded-2xl bg-[#f7f5ff] border border-[#e4dcff] mb-6">
                 <div className="flex items-center justify-center gap-2 text-xs font-semibold text-[#6b6b8f] mb-2">
@@ -294,10 +267,7 @@ export default function JoinGamePage() {
               </div>
 
               {/* Direct button to enter play console */}
-              <button
-                onClick={() => navigate('/play')}
-                className="btn btn-secondary w-full py-3 rounded-2xl"
-              >
+              <button onClick={() => navigate('/play')} className="btn btn-secondary w-full py-3 rounded-2xl">
                 Enter Answering Console
               </button>
             </motion.div>
@@ -306,9 +276,7 @@ export default function JoinGamePage() {
       </main>
 
       {/* Footer */}
-      <footer className="text-xs font-semibold text-white/60 text-center py-4 z-10">
-        Brainy Bot &bull; Real-time Multiplayer Quiz
-      </footer>
+      <footer className="text-xs font-semibold text-white/60 text-center py-4 z-10">Brainy Bot &bull; Real-time Multiplayer Quiz</footer>
     </div>
   );
 }

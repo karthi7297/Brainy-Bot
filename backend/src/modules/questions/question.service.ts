@@ -165,5 +165,13 @@ export async function getQuestionsForSession(quizId: number) {
     optionsByQuestion.set(opt.question_id, list);
   }
 
-  return questionRows.map((q) => ({ ...q, options: optionsByQuestion.get(q.id) ?? [] }));
+  // Normalize `is_correct` (MySQL returns 0/1) into a real boolean so that
+  // downstream strict checks like `option.is_correct === true` behave correctly.
+  return questionRows.map((q) => ({
+    ...q,
+    options: (optionsByQuestion.get(q.id) ?? []).map((o) => ({
+      ...o,
+      is_correct: Boolean(o.is_correct),
+    })),
+  }));
 }

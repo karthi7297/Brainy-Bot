@@ -5,6 +5,7 @@ export const createSessionSchema = z.object({
 });
 
 export const joinSessionSchema = z.object({
+  pin: z.string().trim().min(6).max(16),
   nickname: z.string().trim().min(2, 'Nickname must be at least 2 characters').max(60),
 });
 

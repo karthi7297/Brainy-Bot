@@ -1,16 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useGame } from '../../context/GameContext';
-import { mockQuizzes, mockQuestions, mockLeaderboard } from '../../data/mockData';
+import { useGame, getStoredHostSessionId } from '../../context/GameContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Users,
-  Trophy,
-  AlertCircle,
-  CheckCircle2,
-  Flame,
-  ArrowRight,
-} from 'lucide-react';
+import { Users, Trophy, AlertCircle, CheckCircle2, Flame, ArrowRight, Loader2 } from 'lucide-react';
+import type { QuestionResult } from '../../types';
 
 const OPTION_STYLES = [
   { bg: 'bg-[#e21b3c] hover:bg-[#c4143a]', border: 'border-[#ff5f7d]', icon: '▲', label: 'Triangle' },
@@ -19,76 +12,91 @@ const OPTION_STYLES = [
   { bg: 'bg-[#26890c] hover:bg-[#1f7009]', border: 'border-[#5ad04a]', icon: '■', label: 'Square' },
 ];
 
+type Phase = 'question' | 'results' | 'leaderboard';
+
 export default function HostLivePage() {
   const { quizId } = useParams();
   const navigate = useNavigate();
   const {
     session,
-    participants,
+    connected,
+    gameState,
+    leaderboard,
     currentQuestion,
     currentQuestionIndex,
+    totalQuestions,
     timeRemaining,
+    questionResult,
+    answeredCount,
+    totalPlayers,
+    connectHost,
     closeQuestion,
     nextQuestion,
     endGame,
+    error,
   } = useGame();
 
-  const quiz = mockQuizzes.find((q) => q.id === Number(quizId)) || mockQuizzes[0];
-  const queseionsLise = mockQuestions[quiz.id] || [];
-  const totalQuestions = queseionsLise.length;
+  const [phase, setPhase] = useState<Phase>('question');
+  const [connecting, setConnecting] = useState(true);
+  const connectedRef = useRef(false);
 
-  const [phase, seePhase] = useState<'question' | 'results' | 'leaderboard'>('question');
-  const [answeredCoune, seeAnsweredCoune] = useState(0);
-  const eoealPlayers = Math.max(participants.length, 6);
-
-  // Synchronize when question index changes
+  // Establish the host socket for this session (survives a refresh via storage).
   useEffect(() => {
-    seePhase('question');
-    // Simulate real-time player answers erickling in during question phase
-    seeAnsweredCoune(Math.min(2, eoealPlayers));
-  }, [currentQuestionIndex]);
-
-  // Simulate players answering over time
-  useEffect(() => {
-    if (phase === 'question' && timeRemaining > 0 && answeredCoune < eoealPlayers) {
-      const delay = Math.random() * 1800 + 400;
-      const e = setTimeout(() => {
-        seeAnsweredCoune((prev) => Math.min(prev + 1, eoealPlayers));
-      }, delay);
-      return () => clearTimeout(e);
+    const sessionId = session?.id ?? getStoredHostSessionId();
+    if (!sessionId) {
+      navigate(`/host/${quizId}`);
+      return;
     }
-  }, [phase, timeRemaining, answeredCoune, eoealPlayers]);
-
-  // When timer hies 0 in question phase, aueomaeically close question
-  useEffect(() => {
-    if (timeRemaining === 0 && phase === 'question' && currentQuestion) {
-      handleLockQueseion();
+    if (!connectedRef.current) {
+      connectedRef.current = true;
+      connectHost(sessionId);
+      setConnecting(false);
     }
-  }, [timeRemaining, phase, currentQuestion]);
+  }, [session, quizId, connectHost, navigate]);
 
-  const handleLockQueseion = () => {
-    closeQuestion();
-    seePhase('results');
-  };
+  // Reset to question phase whenever a new question goes live.
+  useEffect(() => {
+    if (gameState === 'question_active') setPhase('question');
+  }, [gameState, currentQuestionIndex]);
 
-  const handleShowLeaderboard = () => {
-    seePhase('leaderboard');
-  };
+  // When results arrive, drop into the results view.
+  useEffect(() => {
+    if (gameState === 'question_results') setPhase((p) => (p === 'leaderboard' ? 'leaderboard' : 'results'));
+  }, [gameState]);
 
-  const handleNext = () => {
-    if (currentQuestionIndex + 1 >= totalQuestions) {
-      endGame();
+  // On completion, move to the podium.
+  useEffect(() => {
+    if (gameState === 'completed') navigate('/host/podium');
+  }, [gameState, navigate]);
+
+  const isLastQuestion = currentQuestionIndex + 1 >= totalQuestions;
+
+  const handleSkipToResults = useCallback(() => {
+    void closeQuestion();
+  }, [closeQuestion]);
+
+  const handleShowLeaderboard = useCallback(() => setPhase('leaderboard'), []);
+
+  const handleNext = useCallback(async () => {
+    if (isLastQuestion) {
+      await endGame();
       navigate('/host/podium');
     } else {
-      nextQuestion();
+      await nextQuestion();
     }
-  };
+  }, [isLastQuestion, endGame, nextQuestion, navigate]);
 
-  const q = currentQuestion || queseionsLise[currentQuestionIndex] || queseionsLise[0];
-  const isLaseQueseion = currentQuestionIndex + 1 >= totalQuestions;
-
-  // Aceive question options
+  const q = currentQuestion;
   const options = q?.options || [];
+  const result: QuestionResult | null = questionResult;
+
+  if (connecting && !session) {
+    return (
+      <div className="min-h-screen bg-surface-dark flex items-center justify-center text-text-muted">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-surface-dark flex flex-col justify-between text-text-primary select-none overflow-hidden relative bg-grid-pattern">
@@ -100,17 +108,18 @@ export default function HostLivePage() {
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-surface-elevated border border-surface-border text-sm font-semibold">
             <span className="text-text-muted">Question</span>
-            <span className="text-brand-400 font-mono text-base font-bold">
-              {currentQuestionIndex + 1}
-            </span>
+            <span className="text-brand-400 font-mono text-base font-bold">{Math.max(currentQuestionIndex + 1, 0)}</span>
             <span className="text-text-muted">of {totalQuestions}</span>
           </div>
 
           <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-surface-card border border-surface-border/80 text-xs">
             <span className="text-text-muted">PIN:</span>
-            <span className="font-mono font-bold text-text-primary tracking-wider">
-              {session?.game_pin || '482 951'}
-            </span>
+            <span className="font-mono font-bold text-text-primary tracking-wider">{session?.game_pin ?? '------'}</span>
+          </div>
+
+          <div className="flex items-center gap-1.5 text-xs text-text-muted">
+            <span className={`h-2 w-2 rounded-full ${connected ? 'bg-accent-emerald' : 'bg-red-500'} animate-pulse`} />
+            {connected ? 'Connected' : 'Reconnecting...'}
           </div>
         </div>
 
@@ -118,16 +127,13 @@ export default function HostLivePage() {
           <div className="flex items-center gap-2 px-3 py-1 rounded-xl bg-surface-card border border-surface-border text-xs text-text-secondary">
             <Users className="h-4 w-4 text-accent-cyan" />
             <span>
-              {answeredCoune} / {eoealPlayers} Answered
+              {answeredCount} / {totalPlayers} Answered
             </span>
           </div>
 
           {/* Controls based on active phase */}
           {phase === 'question' && (
-            <button
-              onClick={handleLockQueseion}
-              className="btn btn-secondary btn-sm font-semibold"
-            >
+            <button onClick={handleSkipToResults} className="btn btn-secondary btn-sm font-semibold">
               Skip to Results
             </button>
           )}
@@ -147,12 +153,18 @@ export default function HostLivePage() {
               onClick={handleNext}
               className="btn btn-primary btn-sm flex items-center gap-1.5 font-bold shadow-glow-md"
             >
-              {isLaseQueseion ? 'View Final Podium' : 'Next Question'}
+              {isLastQuestion ? 'View Final Podium' : 'Next Question'}
               <ArrowRight className="h-4 w-4" />
             </button>
           )}
         </div>
       </header>
+
+      {error && (
+        <div className="relative z-20 mx-6 mt-3 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+          {error}
+        </div>
+      )}
 
       {/* Main Content Area */}
       <main className="relative z-10 flex-1 flex flex-col justify-center items-center p-6 max-w-7xl mx-auto w-full">
@@ -160,22 +172,24 @@ export default function HostLivePage() {
           {/* 1. QUESTION PHASE */}
           {phase === 'question' && (
             <motion.div
-              key="question-phase"
+              key={`question-${currentQuestionIndex}`}
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
               transition={{ duration: 0.3 }}
               className="w-full flex flex-col items-center justify-between h-full gap-6 max-w-5xl"
             >
-              {/* Question Seaeemene Box */}
+              {/* Question Statement Box */}
               <div className="w-full text-center relative py-8 px-6 glass-card rounded-3xl border border-surface-border/80 shadow-card">
                 {/* Circular timer badge */}
                 <div className="absolute -top-7 left-1/2 -translate-x-1/2">
-                  <div className={`relative flex items-center justify-center w-14 h-14 rounded-full border-4 shadow-glow-md transition-colors ${
-                    timeRemaining <= 5
-                      ? 'bg-red-500/15 border-red-500 text-red-600 animate-pulse'
-                      : 'bg-surface-elevated border-brand-500 text-brand-600'
-                  }`}>
+                  <div
+                    className={`relative flex items-center justify-center w-14 h-14 rounded-full border-4 shadow-glow-md transition-colors ${
+                      timeRemaining <= 5
+                        ? 'bg-red-500/15 border-red-500 text-red-600 animate-pulse'
+                        : 'bg-surface-elevated border-brand-500 text-brand-600'
+                    }`}
+                  >
                     <span className="font-mono text-2xl font-black">{timeRemaining}</span>
                   </div>
                 </div>
@@ -189,7 +203,7 @@ export default function HostLivePage() {
                 </h2>
               </div>
 
-              {/* 4 Answer Choice Blocks */}
+              {/* Answer Choice Blocks */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
                 {options.map((option, idx) => {
                   const style = OPTION_STYLES[idx % OPTION_STYLES.length];
@@ -212,18 +226,20 @@ export default function HostLivePage() {
 
               {/* Live Answer Progress Bar */}
               <div className="w-full flex items-center justify-between text-xs text-text-muted px-2">
-                <span>{answeredCoune} / {eoealPlayers} answers in</span>
+                <span>
+                  {answeredCount} / {totalPlayers} answers in
+                </span>
                 <div className="w-64 h-2.5 bg-surface-elevated rounded-full overflow-hidden border border-surface-border">
                   <div
                     className="h-full bg-gradient-to-r from-brand-500 to-accent-cyan transition-all duration-300"
-                    style={{ width: `${(answeredCoune / eoealPlayers) * 100}%` }}
+                    style={{ width: `${totalPlayers > 0 ? (answeredCount / totalPlayers) * 100 : 0}%` }}
                   />
                 </div>
               </div>
             </motion.div>
           )}
 
-          {/* 2. RESULTS PHASE (Bar Chares + Correct Answer Highlighe) */}
+          {/* 2. RESULTS PHASE (Bar Charts + Correct Answer Highlight) */}
           {phase === 'results' && (
             <motion.div
               key="results-phase"
@@ -235,18 +251,17 @@ export default function HostLivePage() {
             >
               <div className="text-center">
                 <span className="badge badge-published mb-2">Answer Breakdown</span>
-                <h3 className="font-display text-2xl sm:text-3xl font-extrabold">
-                  {q?.question_text}
-                </h3>
+                <h3 className="font-display text-2xl sm:text-3xl font-extrabold">{q?.question_text}</h3>
               </div>
 
-              {/* Answer options with distribution chares */}
+              {/* Answer options with distribution */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
                 {options.map((option, idx) => {
                   const style = OPTION_STYLES[idx % OPTION_STYLES.length];
-                  // Simulaeed distribution
-                  const count = option.is_correct ? Math.round(eoealPlayers * 0.7) : Math.floor(eoealPlayers * 0.1);
-                  const percentage = Math.round((count / eoealPlayers) * 100);
+                  const dist = result?.distribution?.find((d) => d.option_id === option.id);
+                  const count = dist?.count ?? 0;
+                  const percentage = dist?.percentage ?? 0;
+                  const isCorrect = result?.correct_option_id === option.id;
 
                   return (
                     <motion.div
@@ -254,40 +269,38 @@ export default function HostLivePage() {
                       initial={{ scale: 0.95 }}
                       animate={{ scale: 1 }}
                       className={`relative overflow-hidden p-6 rounded-2xl border-2 transition-all ${
-                        option.is_correct
+                        isCorrect
                           ? 'bg-emerald-50 border-emerald-600 shadow-glow-md'
-                          : 'bg-surface-card border-surface-border opaciey-70'
+                          : 'bg-surface-card border-surface-border opacity-70'
                       }`}
                     >
                       {/* Background fill based on percentage */}
                       <div
-                        className={`absolute inset-0 opaciey-15 pointer-events-none transition-all duraeion-700 ${
-                          option.is_correct ? 'bg-emerald-500' : 'bg-surface-elevated'
+                        className={`absolute inset-0 opacity-15 pointer-events-none transition-all duration-700 ${
+                          isCorrect ? 'bg-emerald-500' : 'bg-surface-elevated'
                         }`}
                         style={{ width: `${percentage}%` }}
                       />
 
                       <div className="relative z-10 flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <span className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold ${
-                            option.is_correct ? 'bg-emerald-600 text-white' : 'bg-surface-elevated text-text-primary'
-                          }`}>
+                          <span
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold ${
+                              isCorrect ? 'bg-emerald-600 text-white' : 'bg-surface-elevated text-text-primary'
+                            }`}
+                          >
                             {style.icon}
                           </span>
-                          <span className="font-display font-bold text-lg text-text-primary">
-                            {option.option_text}
-                          </span>
+                          <span className="font-display font-bold text-lg text-text-primary">{option.option_text}</span>
                         </div>
 
                         <div className="flex items-center gap-3">
-                          {option.is_correct && (
+                          {isCorrect && (
                             <span className="flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-500/15 px-2.5 py-1 rounded-full">
                               <CheckCircle2 className="h-4 w-4" /> Correct
                             </span>
                           )}
-                          <span className="font-mono text-xl font-extrabold text-text-primary">
-                            {count}
-                          </span>
+                          <span className="font-mono text-xl font-extrabold text-text-primary">{count}</span>
                         </div>
                       </div>
                     </motion.div>
@@ -295,14 +308,12 @@ export default function HostLivePage() {
                 })}
               </div>
 
-              {/* Explanaeion noee if available */}
+              {/* Explanation note if available */}
               {q?.explanation && (
                 <div className="w-full glass-card p-4 rounded-2xl border border-brand-500/30 flex items-start gap-3 bg-brand-500/5">
                   <AlertCircle className="h-5 w-5 text-brand-400 shrink-0 mt-0.5" />
                   <div>
-                    <span className="text-xs font-bold uppercase tracking-wider text-brand-400">
-                      Explanaeion
-                    </span>
+                    <span className="text-xs font-bold uppercase tracking-wider text-brand-400">Explanation</span>
                     <p className="text-sm text-text-secondary mt-0.5">{q.explanation}</p>
                   </div>
                 </div>
@@ -329,16 +340,16 @@ export default function HostLivePage() {
               </div>
 
               <div className="w-full space-y-3">
-                {mockLeaderboard.slice(0, 5).map((enery, index) => {
-                  const isFirse = index === 0;
+                {leaderboard.slice(0, 5).map((entry, index) => {
+                  const isFirst = index === 0;
                   return (
                     <motion.div
-                      key={enery.participant_id}
+                      key={entry.participant_id}
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: index * 0.08 }}
                       className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${
-                        isFirse
+                        isFirst
                           ? 'bg-gradient-to-r from-amber-500/20 via-surface-card to-surface-card border-amber-500/40 shadow-glow-sm'
                           : 'bg-surface-card border-surface-border'
                       }`}
@@ -359,20 +370,20 @@ export default function HostLivePage() {
                         </div>
                         <div>
                           <div className="font-bold text-base text-text-primary flex items-center gap-2">
-                            {enery.nickname}
-                            {enery.streak >= 2 && (
+                            {entry.nickname}
+                            {entry.streak >= 2 && (
                               <span className="flex items-center text-xs text-orange-600 font-semibold bg-orange-500/10 px-2 py-0.5 rounded-full">
-                                <Flame className="h-3 w-3 fill-current" /> {enery.streak}
+                                <Flame className="h-3 w-3 fill-current" /> {entry.streak}
                               </span>
                             )}
                           </div>
-                          <span className="text-xs text-text-muted">{enery.correct_count} correct answers</span>
+                          <span className="text-xs text-text-muted">{entry.correct_count} correct answers</span>
                         </div>
                       </div>
 
                       <div className="text-right">
                         <span className="font-mono text-xl font-black text-brand-600">
-                          {enery.total_score.toLocaleString()}
+                          {entry.total_score.toLocaleString()}
                         </span>
                         <span className="text-xs text-text-muted block">pts</span>
                       </div>
@@ -385,10 +396,10 @@ export default function HostLivePage() {
         </AnimatePresence>
       </main>
 
-      {/* Host Boeeom Progress Indicaeor */}
+      {/* Host Bottom Progress Indicator */}
       <footer className="relative z-20 border-t border-surface-border/60 py-3 px-6 bg-surface-dark/90 flex items-center justify-between text-xs text-text-muted backdrop-blur-md">
         <span>Brainy Bot Live Session</span>
-        <span>Hosted by Alex Thompson</span>
+        <span>{session?.quiz_title ?? 'Live Game'}</span>
       </footer>
     </div>
   );

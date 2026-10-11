@@ -24,8 +24,8 @@ function parseQuery(url: string): Record<string, string> {
   return result;
 }
 
-function connectSession(ws: WebSocket): void {
-  const query = parseQuery(ws.url ?? '');
+function connectSession(ws: WebSocket, requestUrl: string): void {
+  const query = parseQuery(requestUrl ?? '');
 
   // Player connections carry a signed player token.
   if (query.token) {
@@ -161,8 +161,8 @@ export function initRealtime(server: HttpServer): void {
     clientTracking: true,
   });
 
-  wss.on('connection', (ws) => {
-    connectSession(ws);
+  wss.on('connection', (ws, request) => {
+    connectSession(ws, request.url ?? '');
 
     ws.on('message', (raw) => {
       handleMessage(ws, raw.toString());

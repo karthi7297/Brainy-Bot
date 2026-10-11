@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom';
 import { useGame } from '../../context/GameContext';
-import { mockLeaderboard } from '../../data/mockData';
 import { motion } from 'framer-motion';
 import {
   Trophy,
@@ -13,7 +12,7 @@ import {
 
 export default function PodiumPage() {
   const { session, leaderboard } = useGame();
-  const scores = leaderboard.length > 0 ? leaderboard : mockLeaderboard;
+  const scores = leaderboard;
 
   const first = scores[0];
   const second = scores[1];
@@ -74,7 +73,7 @@ export default function PodiumPage() {
           The Champions Podium
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          {session?.quiz_title || 'World Geography Challenge'} &bull; Congratulations to all participants!
+          {session?.quiz_title || 'Live Game'} &bull; Congratulations to all participants!
         </p>
       </header>
 
